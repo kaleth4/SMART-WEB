@@ -1,0 +1,112 @@
+##⚠️ Advertencia Ética y Legal
+Este código es estrictamente para fines educativos. Solo debes escanear sitios web, aplicaciones o servidores sobre los cuales tengas permiso explícito (como un entorno local o plataformas de práctica como DVWA - Damn Vulnerable Web App). Escanear sitios web de terceros sin autorización es ilegal.
+
+##Requisitos previos
+Necesitarás tener Python instalado y la biblioteca requests. Puedes instalarla ejecutando:
+
+Bash
+pip install requests
+Código del Escáner (Python)
+Python
+import requests
+
+def escanear_inyeccion_sql(url):
+    """
+    Busca vulnerabilidades de Inyección SQL (SQLi) enviando una comilla simple (')
+    y buscando errores de sintaxis de bases de datos comunes en la respuesta.
+    """
+    print("[*] Iniciando prueba de Inyección SQL...")
+    payload = "'"
+    url_prueba = f"{url}{payload}"
+    
+    # Lista de errores comunes de bases de datos
+    errores_sql = [
+        "you have an error in your sql syntax",
+        "warning: mysql",
+        "unclosed quotation mark after the character string",
+        "quoted string not properly terminated",
+        "sql syntax"
+    ]
+    
+    try:
+        respuesta = requests.get(url_prueba)
+        for error in errores_sql:
+            if error in respuesta.text.lower():
+                print(f"  [!] ALERTA: Posible vulnerabilidad SQLi detectada en: {url_prueba}")
+                return True
+        print("  [-] No se encontraron indicios básicos de SQLi.")
+    except requests.exceptions.RequestException as e:
+        print(f"  [x] Error al conectar con la URL: {e}")
+    return False
+
+def escanear_xss(url):
+    """
+    Busca vulnerabilidades de Cross-Site Scripting (XSS) inyectando un script
+    básico y verificando si el servidor lo refleja (lo devuelve) en el HTML.
+    """
+    print("[*] Iniciando prueba de Cross-Site Scripting (XSS)...")
+    payload = "<script>alert('Vulnerable')</script>"
+    url_prueba = f"{url}{payload}"
+    
+    try:
+        respuesta = requests.get(url_prueba)
+        # Si el payload exacto aparece en el texto de respuesta, podría ser vulnerable
+        if payload in respuesta.text:
+            print(f"  [!] ALERTA: Posible vulnerabilidad XSS detectada en: {url_prueba}")
+            return True
+        print("  [-] No se detectó vulnerabilidad XSS básica.")
+    except requests.exceptions.RequestException as e:
+        print(f"  [x] Error al conectar con la URL: {e}")
+    return False
+
+def revisar_cabeceras_software(url):
+    """
+    Inspecciona las cabeceras HTTP (Headers) para ver si el servidor expone
+    información sobre las tecnologías y versiones que utiliza (software desactualizado).
+    """
+    print("[*] Inspeccionando cabeceras en busca de software expuesto...")
+    try:
+        respuesta = requests.get(url)
+        cabeceras = respuesta.headers
+        
+        servidor = cabeceras.get("Server", "No expuesto")
+        x_powered_by = cabeceras.get("X-Powered-By", "No expuesto")
+        
+        print(f"  - Servidor: {servidor}")
+        print(f"  - X-Powered-By (Tecnología subyacente): {x_powered_by}")
+        
+        # Una pequeña lógica para advertir si hay números de versión expuestos
+        if any(char.isdigit() for char in servidor) or any(char.isdigit() for char in x_powered_by):
+            print("  [!] PRECAUCIÓN: El servidor está exponiendo versiones de software. Si están desactualizadas, suponen un riesgo crítico.")
+            
+    except requests.exceptions.RequestException as e:
+        print(f"  [x] Error al conectar con la URL: {e}")
+
+if __name__ == "__main__":
+    print("="*50)
+    print("   ESCÁNER SIMPLE DE VULNERABILIDADES WEB")
+    print("="*50)
+    
+    # La URL debe incluir el parámetro a evaluar, por ejemplo: http://misitio.local/pagina.php?id=
+    target_url = input("\nIntroduce la URL objetivo (con parámetro al final, ej. http://sitio.com/?id=): ")
+    
+    if not target_url.startswith("http://") and not target_url.startswith("https://"):
+        print("Por favor, asegúrate de incluir http:// o https://")
+    else:
+        print(f"\nIniciando escaneo en: {target_url}\n")
+        
+        revisar_cabeceras_software(target_url)
+        print("-" * 50)
+        escanear_inyeccion_sql(target_url)
+        print("-" * 50)
+        escanear_xss(target_url)
+        
+        print("\n" + "="*50)
+        print("   ESCANEO FINALIZADO")
+        print("="*50)
+¿Cómo funciona este escáner?
+Escaneo de Inyección SQL (SQLi): La función escanear_inyeccion_sql añade un carácter reservado de bases de datos (') al final de un parámetro en la URL. Si el sitio no sanitiza la entrada correctamente, la base de datos "se rompe" y arroja un error visible en el código fuente de la página, el cual el script intercepta.
+
+Escaneo de XSS: La función escanear_xss inyecta una etiqueta <script> básica. Si al descargar el HTML de respuesta el script enviado se encuentra escrito de vuelta de forma intacta, significa que el navegador de cualquier usuario podría terminar ejecutando ese código malicioso (XSS Reflejado).
+
+Software desactualizado: La función revisar_cabeceras_software no posee una base de datos de versiones obsoletas, pero simula la primera etapa de recolección de información (footprinting). Revisa las cabeceras Server y X-Powered-By devueltas por la página. Muchos servidores mal configurados gritan al mundo "Estoy usando Apache 2.4.49", lo cual permite a un atacante buscar vulnerabilidades específicas para esa versión exacta.
